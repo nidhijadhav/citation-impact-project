@@ -11,11 +11,16 @@ import time
 import os
 import urllib.parse
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # CONFIG =========================================================================
 
-EMAIL = "your_email@northeastern.edu"
-API_KEY = "your_api_key_here"          # get free key at openalex.org/settings/api
+API_KEY = os.getenv("OPENALEX_API_KEY", "")
+if not API_KEY:
+    raise ValueError("OPENALEX_API_KEY not set. Add it to your .env file.")
+
 
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "openalex_cs_papers.json")
@@ -27,6 +32,8 @@ BASE_URL = "https://api.openalex.org/works"
 CS_FIELD_ID = "17"
 
 YEARS = [2018, 2019, 2020]
+SAMPLE_SIZE = 1800
+SEED = 42 
 PER_PAGE = 100
 MAX_PAGES = 18
 SLEEP = 0.12
@@ -34,34 +41,30 @@ SLEEP = 0.12
 
 # HELPER FUNCTIONS ===============================================================
 
-def build_params(year: int) -> dict:
+def build_params(year: int, page: int) -> dict:
     return {
         "filter": (
             f"topics.field.id:{CS_FIELD_ID},"
             f"publication_year:{year},"
             "type:article"
         ),
-        "select": (
-            "id,title,publication_year,cited_by_count,"
-            "authorships,primary_location"
-        ),
-        "sort":     "cited_by_count:desc",
+        "select":   "id,title,publication_year,cited_by_count,authorships,primary_location",
+        "sample":   SAMPLE_SIZE,
+        "seed":     SEED,
         "per_page": PER_PAGE,
+        "page":     page,
         "api_key":  API_KEY,
-        "mailto":   EMAIL,
     }
 
 
-def fetch_page(params: dict, cursor: str) -> dict:
-    query = urllib.parse.urlencode(params) + f"&cursor={urllib.parse.quote(cursor, safe='*')}"
-    url   = f"{BASE_URL}?{query}"
-    resp  = requests.get(url, timeout=30)
+def fetch_page(params: dict) -> dict:
+    resp = requests.get(BASE_URL, params=params, timeout=30)
     if resp.status_code != 200:
         print(f"  API error {resp.status_code}: {resp.text[:300]}")
     resp.raise_for_status()
     data = resp.json()
-    if cursor == "*":
-        print(f"  API reports {data.get('meta', {}).get('count', '?')} total results")
+    if params["page"] == 1:
+        print(f"  API reports {data.get('meta', {}).get('count', '?')} total in sample")
     return data
 
 
@@ -71,40 +74,38 @@ def collect_papers() -> list:
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     all_papers = []
 
+    total_pages = SAMPLE_SIZE // PER_PAGE
+
     for year in YEARS:
         print(f"\n=== Fetching {year} papers ===")
-        params   = build_params(year)
-        cursor   = "*"
-        page_num = 0
 
-        while page_num < MAX_PAGES:
+        for page in range(1, total_pages + 1):
+            params = build_params(year, page)
+
             try:
-                data = fetch_page(params, cursor)
+                data = fetch_page(params)
             except requests.HTTPError as e:
-                print(f"  HTTP error on page {page_num + 1}: {e}. Retrying in 5s...")
+                print(f"  HTTP error on page {page}: {e}. Retrying in 5s...")
                 time.sleep(5)
-                continue
+                try:
+                    data = fetch_page(params)
+                except requests.RequestException:
+                    print(f"  Retry failed. Skipping page {page}.")
+                    continue
             except requests.RequestException as e:
-                print(f"  Request failed: {e}. Skipping page.")
-                break
+                print(f"  Request failed: {e}. Skipping page {page}.")
+                continue
 
             results = data.get("results", [])
             if not results:
-                print(f"  No more results at page {page_num + 1}.")
+                print(f"  No results on page {page}, stopping early.")
                 break
 
             all_papers.extend(results)
-            page_num += 1
-            print(f"  Page {page_num:02d} | +{len(results)} papers | total so far: {len(all_papers)}")
-
-            cursor = data.get("meta", {}).get("next_cursor")
-            if not cursor:
-                break
-
+            print(f"  Page {page:02d} | +{len(results)} papers | total so far: {len(all_papers)}")
             time.sleep(SLEEP)
 
     return all_papers
-
 
 # ENTRY POINT ====================================================================
 
