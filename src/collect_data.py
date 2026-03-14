@@ -1,8 +1,7 @@
 """
 collect_data.py
 ---------------
-Fetches Computer Science papers (2018–2020) from the OpenAlex API
-and saves raw results as a JSON file.
+Fetches Computer Science papers (2018–2020) from the OpenAlex API and saves the raw results as a JSON file.
 """
 
 import requests
@@ -69,7 +68,7 @@ def fetch_page(params: dict) -> dict:
     return data
 
 
-# MAIN COLLECTION ================================================================
+# FETCH PAPERS ================================================================
 
 def collect_papers() -> list:
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -109,7 +108,7 @@ def collect_papers() -> list:
     return all_papers
 
 
-# ENTRY POINT ====================================================================
+# MAIN ====================================================================
 
 if __name__ == "__main__":
     print(f"Starting collection at {datetime.now().strftime('%H:%M:%S')}")
