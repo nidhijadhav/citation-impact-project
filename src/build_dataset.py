@@ -1,8 +1,7 @@
 """
 build_dataset.py
 ----------------
-Loads raw OpenAlex JSON, engineers features, and saves a clean CSV
-ready for modeling.
+Loads raw OpenAlex JSON, engineers features, and saves a clean CSV ready for modeling.
 """
 
 import json
@@ -181,18 +180,11 @@ def main():
         else:
             rows.append(features)
 
-    print(f"  {len(rows)} valid records | {skipped} skipped (missing fields).")
-
     df = pd.DataFrame(rows)
 
     before = len(df)
     df = df[df["num_authors"] > 0].reset_index(drop=True)
-    print(f"  Dropped {before - len(df)} papers with 0 authors.")
-
-    print("\nComputing within-year high-impact labels ...")
     df = add_high_impact_label(df)
-
-    print("\nAdding log-transformed features ...")
     df = add_log_features(df)
 
     os.makedirs(os.path.dirname(OUT_FILE), exist_ok=True)
