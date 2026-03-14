@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 # CONFIG =========================================================================
 
 API_KEY = os.getenv("OPENALEX_API_KEY", "")
@@ -106,6 +107,7 @@ def collect_papers() -> list:
             time.sleep(SLEEP)
 
     return all_papers
+
 
 # ENTRY POINT ====================================================================
 
