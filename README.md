@@ -5,7 +5,7 @@
 
 Not all scientific papers get cited equally. A small fraction of publications end up accumulating the vast majority of citations, while most of other papers get relatively little attention. This project looks at whether structural features of a paper, things like who wrote it, where they work, and how many institutions were involved, can predict whether a paper ends up in the top 10% of citations in its field.
 
-We focus on Computer Science papers published between 2018 and 2020, using metadata pulled from the OpenAlex open academic graph. The idea is to only use features that would be observable at the time of publication, before any citations have accumulated, which makes this a more realistic prediction problem.
+We're focusing on Computer Science papers published between 2018 and 2020, using metadata pulled from the OpenAlex open academic graph. The idea is to only use features that would be observable at the time of publication, before any citations have accumulated, which makes this a more realistic prediction problem.
 
 ---
 
@@ -66,6 +66,7 @@ Elite institutions are matched using OpenAlex's official institution IDs. The li
 A two-layer neural network implemented from scratch using NumPy. Uses ReLU activations in the hidden layer and a sigmoid output for binary classification, trained with binary cross-entropy loss and gradient descent.
 
 **Model 2: Bayesian Logistic Regression (R)** WIP
+
 ---
 
 ## Repo Structure
@@ -98,11 +99,3 @@ citation-impact/
 1. Copy `.env.example` to `.env` and add your OpenAlex API key (free at openalex.org/settings/api)
 2. Run `python src/collect_data.py` to pull raw data
 3. Run `python src/build_dataset.py` to build the dataset
-
----
-
-## Known Limitations
-
-- The elite institution list reflects a particular view of prestige and is somewhat subjective (could be tweaked)
-- Citation counts are still a noisy proxy for impact, and the threshold for "high impact" is defined relative to this dataset, not some kinda external standard
-- A lot of what drives citation counts (topic, venue reputation, paper quality) isn't captured by these features. So its more likely that the models are finding correlations, not causes.
