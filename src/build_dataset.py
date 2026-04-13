@@ -6,18 +6,16 @@ Loads raw OpenAlex JSON, engineers features, and saves a clean CSV ready for mod
 
 import json
 import os
-import re
 import numpy as np
 import pandas as pd
-from datetime import datetime
 
 
 # PATHS =========================================================================
 
 BASE_DIR     = os.path.join(os.path.dirname(__file__), "..")
 RAW_FILE     = os.path.join(BASE_DIR, "data", "raw", "openalex_cs_papers.json")
-OUT_FILE     = os.path.join(BASE_DIR, "data", "processed", "dataset.csv")
-CURRENT_YEAR = datetime.now().year
+OUT_FILE     = os.path.join(BASE_DIR, "data", "processed", "papers.csv")
+REFERENCE_YEAR = 2026
 
 
 # ELITE INSTITUTIONS ============================================================
@@ -101,16 +99,16 @@ def extract_features(paper: dict) -> dict | None:
             if inst_type:
                 inst_types.append(inst_type)
 
-    num_institutions = len(institution_ids)
-    num_countries    = len(country_codes)
+    num_institutions = max(1, len(institution_ids))
+    num_countries = max(1, len(country_codes)) if len(authorships) > 0 else 0
     is_multi_inst    = int(num_institutions > 1)
     is_international = int(num_countries > 1)
 
     # Institutional features 
     has_elite       = int(bool(institution_ids & ELITE_IDS))
-    has_industry    = int("company" in inst_types)
-    has_gov_nonprof = int("government" in inst_types or "nonprofit" in inst_types)
-    has_us_inst     = int("US" in country_codes)
+    has_industry    = int(any(t == "company" for t in inst_types))
+    has_gov_nonprof = int(any(t in ["government", "nonprofit"] for t in inst_types))
+    has_us_inst     = int(any(cc == "US" for cc in country_codes))
 
     # Venue features 
     primary_loc = paper.get("primary_location") or {}
@@ -119,7 +117,7 @@ def extract_features(paper: dict) -> dict | None:
     is_journal  = int(source.get("type", "") == "journal")
 
     # Temporal features 
-    paper_age = CURRENT_YEAR - year
+    paper_age = REFERENCE_YEAR - year
 
     return {
         "paper_id":             paper_id,
