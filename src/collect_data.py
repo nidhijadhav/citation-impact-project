@@ -8,7 +8,6 @@ import requests
 import json
 import time
 import os
-import urllib.parse
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -35,7 +34,6 @@ YEARS = [2018, 2019, 2020]
 SAMPLE_SIZE = 1800
 SEED = 42 
 PER_PAGE = 100
-MAX_PAGES = 18
 SLEEP = 0.12
 
 
@@ -48,12 +46,15 @@ def build_params(year: int, page: int) -> dict:
             f"publication_year:{year},"
             "type:article"
         ),
-        "select":   "id,title,publication_year,cited_by_count,authorships,primary_location",
-        "sample":   SAMPLE_SIZE,
-        "seed":     SEED,
-        "per_page": PER_PAGE,
-        "page":     page,
-        "api_key":  API_KEY,
+        "select": (
+            "id,title,publication_year,cited_by_count,"
+            "authorships,primary_location,open_access,type"
+        ),
+        "sample": SAMPLE_SIZE,
+        "seed": SEED,
+        "per-page": PER_PAGE,
+        "page": page,
+        "api_key": API_KEY,
     }
 
 
@@ -63,9 +64,31 @@ def fetch_page(params: dict) -> dict:
         print(f"  API error {resp.status_code}: {resp.text[:300]}")
     resp.raise_for_status()
     data = resp.json()
+
     if params["page"] == 1:
         print(f"  API reports {data.get('meta', {}).get('count', '?')} total in sample")
+
     return data
+
+
+def deduplicate_papers(papers: list) -> list:
+    seen_ids = set()
+    unique_papers = []
+
+    for paper in papers:
+        paper_id = paper.get("id")
+        if paper_id and paper_id not in seen_ids:
+            seen_ids.add(paper_id)
+            unique_papers.append(paper)
+
+    return unique_papers
+
+
+def summarize_by_year(papers: list) -> dict:
+    summary = {}
+    for year in YEARS:
+        summary[year] = sum(1 for p in papers if p.get("publication_year") == year)
+    return summary
 
 
 # FETCH PAPERS ================================================================
@@ -112,16 +135,25 @@ def collect_papers() -> list:
 
 if __name__ == "__main__":
     print(f"Starting collection at {datetime.now().strftime('%H:%M:%S')}")
+
     papers = collect_papers()
+    unique_papers = deduplicate_papers(papers)
+    year_counts = summarize_by_year(unique_papers)
 
     payload = {
         "collected_at": datetime.now().isoformat(),
-        "total_papers": len(papers),
+        "total_papers_raw": len(papers),
+        "total_papers_unique": len(unique_papers),
         "years": YEARS,
-        "papers": papers,
+        "counts_by_year": year_counts,
+        "papers": unique_papers,
     }
 
     with open(OUTPUT_FILE, "w") as f:
         json.dump(payload, f, indent=2)
 
-    print(f"\nDone. {len(papers)} papers saved to {OUTPUT_FILE}")
+    print("\nCollection summary:")
+    print(f"  Raw papers collected:    {len(papers)}")
+    print(f"  Unique papers collected: {len(unique_papers)}")
+    print(f"  Counts by year:          {year_counts}")
+    print(f"\nDone. Saved to {OUTPUT_FILE}")
