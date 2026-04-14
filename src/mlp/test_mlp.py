@@ -1,5 +1,5 @@
 import numpy as np
-from mlp import MLP
+from src.mlp.mlp import MLP
 
 # fake data
 X = np.random.rand(100, 5)
