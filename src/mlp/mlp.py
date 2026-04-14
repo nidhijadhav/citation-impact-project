@@ -85,6 +85,7 @@ class MLP:
         loss = -np.mean(
             y_true * np.log(y_pred) + (1.0 - y_true) * np.log(1.0 - y_pred)
         )
+        
         return float(loss)
 
     def backward(self, X, y_true):
