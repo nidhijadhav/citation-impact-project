@@ -54,12 +54,12 @@ def build_params(year: int, page: int) -> dict:
         "seed": SEED,
         "per-page": PER_PAGE,
         "page": page,
-        "api_key": API_KEY,
     }
 
 
 def fetch_page(params: dict) -> dict:
-    resp = requests.get(BASE_URL, params=params, timeout=30)
+    headers = {"Authorization": f"Bearer {API_KEY}"} if API_KEY else {}
+    resp = requests.get(BASE_URL, params=params, headers=headers, timeout=30)
     if resp.status_code != 200:
         print(f"  API error {resp.status_code}: {resp.text[:300]}")
     resp.raise_for_status()

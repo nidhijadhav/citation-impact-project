@@ -15,7 +15,6 @@ import pandas as pd
 BASE_DIR     = os.path.join(os.path.dirname(__file__), "..")
 RAW_FILE     = os.path.join(BASE_DIR, "data", "raw", "openalex_cs_papers.json")
 OUT_FILE     = os.path.join(BASE_DIR, "data", "processed", "papers.csv")
-REFERENCE_YEAR = 2026
 
 
 # ELITE INSTITUTIONS ============================================================
@@ -99,8 +98,8 @@ def extract_features(paper: dict) -> dict | None:
             if inst_type:
                 inst_types.append(inst_type)
 
-    num_institutions = max(1, len(institution_ids))
-    num_countries = max(1, len(country_codes)) if len(authorships) > 0 else 0
+    num_institutions = len(institution_ids) if institution_ids else 0
+    num_countries    = len(country_codes)   if authorships else 0
     is_multi_inst    = int(num_institutions > 1)
     is_international = int(num_countries > 1)
 
@@ -115,9 +114,6 @@ def extract_features(paper: dict) -> dict | None:
     is_oa       = int(bool(primary_loc.get("is_oa")))
     source      = primary_loc.get("source") or {}
     is_journal  = int(source.get("type", "") == "journal")
-
-    # Temporal features 
-    paper_age = REFERENCE_YEAR - year
 
     return {
         "paper_id":             paper_id,
@@ -134,7 +130,6 @@ def extract_features(paper: dict) -> dict | None:
         "has_us_institution":   has_us_inst,
         "is_open_access":       is_oa,
         "is_journal":           is_journal,
-        "paper_age":            paper_age,
     }
 
 

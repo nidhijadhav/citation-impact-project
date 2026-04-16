@@ -67,13 +67,13 @@ class MLP:
 
         return self.A2
 
-    def compute_loss(self, y_true, y_pred):
+    def compute_loss(self, y_true, y_pred, pos_weight: float = 1.0):
         """
-        Computes binary cross-entropy loss.
+        Computes weighted binary cross-entropy loss.
         Args:
             y_true (np.ndarray): True labels of shape (n_samples, 1)
             y_pred (np.ndarray): Predicted probabilities of shape (n_samples, 1)
-        Returns:
+            pos_weight (float): Weight applied to positive-class loss terms
             float: Loss value
         """
         y_true = np.asarray(y_true).reshape(-1, 1)
@@ -83,25 +83,26 @@ class MLP:
         y_pred = np.clip(y_pred, eps, 1.0 - eps)
 
         loss = -np.mean(
-            y_true * np.log(y_pred) + (1.0 - y_true) * np.log(1.0 - y_pred)
+            pos_weight * y_true * np.log(y_pred)
+            + (1.0 - y_true) * np.log(1.0 - y_pred)
         )
-        
+
         return float(loss)
 
-    def backward(self, X, y_true):
+    def backward(self, X, y_true, pos_weight: float = 1.0):
         """
         Performs backward pass to compute gradients.
         Args:
             X (np.ndarray): Input features of shape (n_samples, input_dim)
             y_true (np.ndarray): True labels of shape (n_samples, 1)
-        Returns:
-            None
+            pos_weight (float): Weight applied to positive-class loss terms
         """
         m = X.shape[0]
         y_true = np.asarray(y_true).reshape(-1, 1)
 
         # output layer gradients
-        dZ2 = self.A2 - y_true
+        weights = np.where(y_true == 1, pos_weight, 1.0)
+        dZ2 = weights * (self.A2 - y_true)
         self.dW2 = (self.A1.T @ dZ2) / m
         self.db2 = np.sum(dZ2, axis=0, keepdims=True) / m
 
@@ -111,33 +112,36 @@ class MLP:
         self.dW1 = (X.T @ dZ1) / m
         self.db1 = np.sum(dZ1, axis=0, keepdims=True) / m
 
-    def update_params(self, learning_rate=0.01):
+    def update_params(self, learning_rate=0.01, weight_decay=0.0):
         """
-        Updates parameters using gradient descent.
+        Updates parameters using gradient descent with optional L2 regularization.
         Args:
             learning_rate (float): Learning rate for parameter updates
+            weight_decay (float): L2 penalty coefficient (lambda)
         Returns:
             None
         """
-        self.W1 -= learning_rate * self.dW1
+        self.W1 -= learning_rate * (self.dW1 + weight_decay * self.W1)
         self.b1 -= learning_rate * self.db1
-        self.W2 -= learning_rate * self.dW2
+        self.W2 -= learning_rate * (self.dW2 + weight_decay * self.W2)
         self.b2 -= learning_rate * self.db2
 
-    def train_step(self, X, y_true, learning_rate=0.01):
+    def train_step(self, X, y_true, learning_rate=0.01, pos_weight: float = 1.0, weight_decay: float = 0.0):
         """
         Performs a single training step: forward pass, loss computation, backward pass, and parameter update.
         Args:
             X (np.ndarray): Input features of shape (n_samples, input_dim)
             y_true (np.ndarray): True labels of shape (n_samples, 1)
             learning_rate (float): Learning rate for parameter updates
+            pos_weight (float): Weight for positive-class loss terms
+            weight_decay (float): L2 penalty coefficient (lambda)
         Returns:
             float: Loss value for the current training step
         """
         y_pred = self.forward(X)
-        loss = self.compute_loss(y_true, y_pred)
-        self.backward(X, y_true)
-        self.update_params(learning_rate)
+        loss = self.compute_loss(y_true, y_pred, pos_weight=pos_weight)
+        self.backward(X, y_true, pos_weight=pos_weight)
+        self.update_params(learning_rate, weight_decay=weight_decay)
         return loss
 
     def predict_proba(self, X):

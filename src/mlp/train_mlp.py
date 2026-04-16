@@ -1,12 +1,15 @@
 import json
-
+ 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score,
+    confusion_matrix, roc_auc_score, precision_recall_curve,
+)
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LogisticRegression
-
+ 
 from src.mlp.mlp import MLP
 
 
@@ -30,47 +33,25 @@ FEATURE_COLS = [
 
 EPOCHS = 300
 LEARNING_RATE = 0.05
-HIDDEN_DIM = 128
+HIDDEN_DIM = 16
 RANDOM_STATE = 42
+
+# Positive class weight: upweights minority class in the loss.
+POS_WEIGHT = 6.0
+
+# L2 regularization: keeps weights small and closes the train/val gap.
+WEIGHT_DECAY = 0.01
+
+# Decision threshold: 0.52 is the best-F1 point from the PR curve.
+DECISION_THRESHOLD = 0.52
 
 METRICS_PATH = "results/mlp_metrics.json"
 LOSS_FIG_PATH = "results/mlp_loss.png"
 CM_FIG_PATH = "results/mlp_confusion_matrix.png"
+PR_FIG_PATH  = "results/mlp_pr_curve.png"
 
 
 # Helpers =========================================================================
-
-def run_logistic_regression_baseline(X_train, y_train, X_test, y_test, threshold=0.1):
-    # init model
-    model = LogisticRegression(class_weight="balanced", max_iter=1000)
-
-    # train
-    model.fit(X_train, y_train)
-
-    # predict probabilities
-    probs = model.predict_proba(X_test)[:, 1]
-
-    # apply threshold
-    preds = (probs >= threshold).astype(int)
-
-    # metrics
-    accuracy = accuracy_score(y_test, preds)
-    precision = precision_score(y_test, preds, zero_division=0)
-    recall = recall_score(y_test, preds, zero_division=0)
-    f1 = f1_score(y_test, preds, zero_division=0)
-
-    print("\nLogistic Regression Baseline Metrics:")
-    print(f"Accuracy:  {accuracy:.4f}")
-    print(f"Precision: {precision:.4f}")
-    print(f"Recall:    {recall:.4f}")
-    print(f"F1:        {f1:.4f}")
-
-    return {
-        "accuracy": accuracy,
-        "precision": precision,
-        "recall": recall,
-        "f1": f1,
-    }
 
 def plot_loss(train_losses, val_losses, path):
     plt.figure(figsize=(8, 5))
@@ -98,6 +79,30 @@ def plot_confusion_matrix(cm, path):
         for j in range(cm.shape[1]):
             plt.text(j, i, str(cm[i, j]), ha="center", va="center")
 
+    plt.tight_layout()
+    plt.savefig(path)
+    plt.close()
+
+def plot_pr_curve(y_test, y_probs, threshold, path):
+    prec, rec, thresholds = precision_recall_curve(y_test, y_probs)
+    f1s = np.where((prec + rec) == 0, 0, 2 * prec * rec / (prec + rec))
+    best_idx = f1s.argmax()
+    chosen_idx = np.argmin(np.abs(thresholds - threshold))
+ 
+    plt.figure(figsize=(8, 5))
+    plt.plot(rec, prec, color="#2c7fb8", linewidth=1.5, label="PR curve")
+    plt.scatter(
+        [rec[best_idx]], [prec[best_idx]], color="#d7301f", zorder=5,
+        label=f"Best F1 threshold={thresholds[best_idx]:.2f} (F1={f1s[best_idx]:.3f})",
+    )
+    plt.scatter(
+        [rec[chosen_idx]], [prec[chosen_idx]], color="orange", zorder=5, marker="D",
+        label=f"Chosen threshold={threshold}",
+    )
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title("Precision-Recall Curve")
+    plt.legend(fontsize=9)
     plt.tight_layout()
     plt.savefig(path)
     plt.close()
@@ -185,12 +190,12 @@ def main():
 
     for epoch in range(EPOCHS):
         # forward + loss + backward + update
-        train_loss = model.train_step(X_train, y_train, learning_rate=LEARNING_RATE)
+        train_loss = model.train_step(X_train, y_train, learning_rate=LEARNING_RATE, pos_weight=POS_WEIGHT, weight_decay=WEIGHT_DECAY)
         train_losses.append(train_loss)
 
         # validation loss
         val_probs = model.predict_proba(X_val)
-        val_loss = model.compute_loss(y_val, val_probs)
+        val_loss = model.compute_loss(y_val, val_probs, pos_weight=POS_WEIGHT)
         val_losses.append(val_loss)
 
         if epoch % 25 == 0:
@@ -204,15 +209,17 @@ def main():
 
     # eval on test set
     y_probs = model.predict_proba(X_test).flatten()
-    y_pred = (y_probs >= 0.1).astype(int)
+    y_pred = (y_probs >= DECISION_THRESHOLD).astype(int)
 
     accuracy = accuracy_score(y_test, y_pred)
     precision = precision_score(y_test, y_pred, zero_division=0)
     recall = recall_score(y_test, y_pred, zero_division=0)
     f1 = f1_score(y_test, y_pred, zero_division=0)
+    auc = roc_auc_score(y_test, y_probs)
     cm = confusion_matrix(y_test, y_pred)
 
     print("MLP Metrics:")
+    print(f"AUC:       {auc:.4f}")
     print(f"Accuracy:  {accuracy:.4f}")
     print(f"Precision: {precision:.4f}")
     print(f"Recall:    {recall:.4f}")
@@ -220,10 +227,12 @@ def main():
 
     # save metrics to JSON
     metrics = {
-        "accuracy": float(accuracy),
+        "decision_threshold": DECISION_THRESHOLD,
+        "accuracy":  float(accuracy),
         "precision": float(precision),
-        "recall": float(recall),
-        "f1": float(f1),
+        "recall":    float(recall),
+        "f1":        float(f1),
+        "auc":       float(auc),
     }
 
     with open(METRICS_PATH, "w") as f:
@@ -235,13 +244,14 @@ def main():
     # plot confusion matrix
     plot_confusion_matrix(cm, CM_FIG_PATH)
 
+    # plot precision-recall curve
+    plot_pr_curve(y_test, y_probs, DECISION_THRESHOLD, PR_FIG_PATH)
+
     print("\nSaved outputs:")
     print(METRICS_PATH)
     print(LOSS_FIG_PATH)
     print(CM_FIG_PATH)
-
-    run_logistic_regression_baseline(X_train, y_train, X_test, y_test, threshold=0.1)
-
+    print(PR_FIG_PATH)
 
 if __name__ == "__main__":
     main()

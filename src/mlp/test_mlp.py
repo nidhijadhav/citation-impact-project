@@ -1,8 +1,10 @@
 import numpy as np
 from src.mlp.mlp import MLP
 
+rng = np.random.default_rng(42)
+
 # fake data
-X = np.random.rand(100, 5)
+X = rng.random((100, 5))
 y = (X.sum(axis=1) > 2.5).astype(int)
 
 # init model
